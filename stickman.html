@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <title>Stickman: Từ Ghép - Từ Láy</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        /* Custom keyframe for button pulse animation */
+        @keyframes pulse-button {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+        .animate-pulse-button {
+            animation: pulse-button 1.5s infinite;
+        }
+        /* Text shadow for score and lives */
+        .text-shadow-md {
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.1);
+        }
+        /* Ensure canvas scales correctly within its container */
+        canvas {
+            max-width: 90vw; /* Max width relative to viewport */
+            max-height: 70vh; /* Max height relative to viewport */
+            width: auto; /* Allow width to adjust based on height */
+            height: auto; /* Allow height to adjust based on width */
+        }
+
+        /* Screen shake effect */
+        @keyframes shake {
+            0% { transform: translate(1px, 1px) rotate(0deg); }
+            10% { transform: translate(-1px, -2px) rotate(-1deg); }
+            20% { transform: translate(-3px, 0px) rotate(1deg); }
+            30% { transform: translate(3px, 2px) rotate(0deg); }
+            40% { transform: translate(1px, -1px) rotate(1deg); }
+            50% { transform: translate(-1px, 2px) rotate(-1deg); }
+            60% { transform: translate(-3px, 1px) rotate(0deg); }
+            70% { transform: translate(3px, 1px) rotate(-1deg); }
+            80% { transform: translate(-1px, -1px) rotate(1deg); }
+            90% { transform: translate(1px, 2px) rotate(0deg); }
+            100% { transform: translate(1px, -2px) rotate(-1deg); }
+        }
+        .shake-screen {
+            animation: shake 0.2s cubic-bezier(.36,.07,.19,.97) both;
+            transform: translate3d(0, 0, 0);
+            backface-visibility: hidden;
+            perspective: 1000px;
+        }
+
+        /* Red flash effect */
+        @keyframes flashRed {
+            0% { background-color: transparent; }
+            50% { background-color: rgba(255, 0, 0, 0.3); } /* Semi-transparent red */
+            100% { background-color: transparent; }
+        }
+        .flash-red {
+            animation: flashRed 0.3s ease-out;
+        }
+    </style>
+</head>
+<body class="font-inter text-center bg-gray-100 flex flex-col items-center justify-center min-h-screen m-0 overflow-hidden p-4">
+
+    <!-- Start Screen -->
+    <div id="start-screen" class="absolute inset-0 bg-black bg-opacity-70 flex flex-col justify-center items-center text-white text-2xl z-50 p-4">
+        <h2 class="text-4xl font-bold mb-6">Chào mừng đến với Stickman: Từ Ghép - Từ Láy</h2>
+        <input type="text" id="player-name-input" placeholder="Nhập tên của bạn" maxlength="20" class="p-3 text-xl border-2 border-blue-500 rounded-lg mb-6 w-full max-w-sm text-center text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+        <button id="start-button" class="py-4 px-8 text-2xl font-bold text-white bg-blue-600 border-none rounded-xl shadow-lg transition duration-300 ease-in-out transform hover:bg-blue-700 hover:-translate-y-1 active:translate-y-0 active:shadow-sm animate-pulse-button mb-4">Bấm vào đây để bắt đầu</button>
+        <p class="text-lg mt-5">Nhấn nút để bắt đầu trò chơi.</p>
+    </div>
+
+    <!-- Game Over Screen -->
+    <div id="game-over-screen" class="absolute inset-0 bg-black bg-opacity-70 flex-col justify-center items-center text-white text-2xl z-50 p-4 hidden">
+        <h2 class="text-4xl font-bold mb-6">Game Over!</h2>
+        <p id="final-score-display" class="text-3xl mb-8">Điểm của bạn: 0</p>
+        <button id="restart-button" class="py-4 px-8 text-2xl font-bold text-white bg-green-600 border-none rounded-xl shadow-lg transition duration-300 ease-in-out transform hover:bg-green-700 hover:-translate-y-1 active:translate-y-0 active:shadow-sm animate-pulse-button">Chơi lại</button>
+    </div>
+
+    <!-- Explanation Modal -->
+    <div id="explanation-modal" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 hidden">
+        <div class="bg-white p-6 rounded-lg shadow-xl max-w-md w-full mx-4 text-gray-800 relative">
+            <h3 class="text-2xl font-bold mb-4">Giải thích từ</h3>
+            <p id="explanation-text" class="text-lg mb-4 text-left"></p>
+            <button id="close-explanation-modal" class="absolute top-3 right-3 text-gray-600 hover:text-gray-900 text-3xl font-bold">&times;</button>
+        </div>
+    </div>
+
+    <!-- Game UI -->
+    <h1 class="text-4xl font-bold text-gray-800 mb-4">Stickman: Từ Ghép - Từ Láy</h1>
+    <div id="score-display" class="text-3xl font-bold text-blue-600 mb-5 text-shadow-md">Điểm: 0</div>
+    <!-- Lives Display moved to top right -->
+    <div id="lives-display" class="absolute top-4 right-4 text-3xl font-bold text-red-600 text-shadow-md z-10">❤️❤️❤️</div>
+    <canvas id="gameCanvas" class="bg-gradient-to-t from-blue-300 to-blue-200 block mx-auto border-4 border-gray-800 rounded-lg shadow-xl"></canvas>
+    <div class="mt-8 text-lg text-gray-700 bg-blue-100 p-4 rounded-lg shadow-md flex flex-wrap justify-center items-center gap-4">
+        Sử dụng phím <span class="font-bold text-gray-900">Mũi tên Trái/Phải</span> để di chuyển, phím <span class="font-bold text-gray-900">Space</span> để nhảy.
+        <button id="explain-word-button" class="py-2 px-4 text-sm font-bold text-white bg-purple-600 rounded-lg shadow-md transition duration-300 ease-in-out hover:bg-purple-700">Giải thích từ ✨</button>
+        <button id="generate-questions-button" class="py-2 px-4 text-sm font-bold text-white bg-teal-600 rounded-lg shadow-md transition duration-300 ease-in-out hover:bg-teal-700">Tạo câu hỏi mới ✨</button>
+    </div>
+    
+    <!-- Scroll Down Button -->
+    <button id="scroll-down-button" class="mt-8 py-3 px-6 text-xl font-bold text-white bg-gray-700 border-none rounded-lg shadow-md transition duration-300 ease-in-out transform hover:bg-gray-800 hover:-translate-y-1 active:translate-y-0 active:shadow-sm">Cuộn xuống</button>
+
+    <script type="module">
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+        const scoreDisplay = document.getElementById("score-display");
+        const livesDisplay = document.getElementById("lives-display");
+        const startScreen = document.getElementById("start-screen");
+        const startButton = document.getElementById("start-button");
+        const playerNameInput = document.getElementById("player-name-input");
+        const gameOverScreen = document.getElementById("game-over-screen");
+        const finalScoreDisplay = document.getElementById("final-score-display");
+        const restartButton = document.getElementById("restart-button");
+        const scrollDownButton = document.getElementById("scroll-down-button"); 
+        const explainWordButton = document.getElementById("explain-word-button"); // New button
+        const generateQuestionsButton = document.getElementById("generate-questions-button"); // New button for generating questions
+        const explanationModal = document.getElementById("explanation-modal"); // New modal
+        const explanationText = document.getElementById("explanation-text"); // Text inside modal
+        const closeExplanationModalButton = document.getElementById("close-explanation-modal"); // Close modal button
+
+        // --- Sound Effects ---
+        const oofSound = new Audio('https://raw.githubusercontent.com/huynhnhungphibinh123-create/beodeptrai/main/oof_sound_effect-www_tiengdong_com.mp3');
+        oofSound.volume = 0.8; // Adjust volume as needed
+        const correctSound = new Audio('https://raw.githubusercontent.com/huynhnhungphibinh123-create/beodeptrai/main/meme_10_diem_mp3_edit_video-www_tiengdong_com.mp3'); // Correct answer sound
+        correctSound.volume = 0.5; // Adjust volume as needed
+        // Sử dụng liên kết thô từ GitHub. Lưu ý: Có thể vẫn không hoạt động do CORS/cách trình duyệt xử lý tệp.
+        const backgroundMusic = new Audio('https://raw.githubusercontent.com/huynhnhungphibinh123-create/beodeptrai/c986d9a40456bd80e958a7140a55bb55cd15de46/Thiên%20Lý%20Ơi.mp3'); 
+        backgroundMusic.loop = true;
+        backgroundMusic.volume = 0.6; 
+
+        let stickman = {
+            x: 50,
+            y: 300,
+            width: 30,
+            height: 50,
+            dx: 0,
+            dy: 0,
+            gravity: 1,
+            jumpPower: -15,
+            onGround: true
+        };
+
+        // Kích thước các yếu tố trò chơi tương đối với canvas gốc 800x400 để chia tỷ lệ
+        const originalCanvasWidth = 800;
+        const originalCanvasHeight = 400;
+
+        const walls = [
+            { x: 0, y: 0, width: 10, height: originalCanvasHeight },
+            { x: originalCanvasWidth - 10, y: 0, width: 10, height: originalCanvasHeight }
+        ];
+
+        const ground = { x: 0, y: originalCanvasHeight - 50, width: originalCanvasWidth, height: 50 };
+
+        const answerZones = [
+            { x: 200, y: 150, width: 100, height: 50, text: "Từ ghép" },
+            { x: 500, y: 150, width: 100, height: 50, text: "Từ láy" }
+        ];
+
+        // Updated hardcoded questions with more accurate and reliable answers
+        let questions = [
+            { question: "Xinh xắn là?", correct: 1 },   // Từ láy
+            { question: "Xe đạp là?", correct: 0 },     // Từ ghép
+            { question: "Lấp lánh là?", correct: 1 },   // Từ láy
+            { question: "Bàn ghế là?", correct: 0 },     // Từ ghép
+            { question: "Lúng liếng là?", correct: 1 },  // Từ láy
+            { question: "Học sinh là?", correct: 0 },     // Từ ghép
+            { question: "Lạnh lẽo là?", correct: 1 },   // Từ láy
+            { question: "Mặt trời là?", correct: 0 },     // Từ ghép
+            { question: "Chăm chỉ là?", correct: 1 },   // Từ láy
+            { question: "Sách vở là?", correct: 0 },     // Từ ghép
+            { question: "Lấp ló là?", correct: 1 },     // Từ láy
+            { question: "Máy tính là?", correct: 0 },     // Từ ghép
+            { question: "Mềm mại là?", correct: 1 },    // Từ láy
+            { question: "Đồng hồ là?", correct: 0 },     // Từ ghép
+            { question: "Rì rào là?", correct: 1 },     // Từ láy
+            { question: "Cây cối là?", correct: 0 },     // Từ ghép
+            { question: "Lao xao là?", correct: 1 },    // Từ láy
+            { question: "Thức ăn là?", correct: 0 },     // Từ ghép
+            { question: "Ngập ngừng là?", correct: 1 }, // Từ láy
+            { question: "Quần áo là?", correct: 0 }      // Từ ghép
+        ];
+        
+        let score = 0;
+        let lives = 3;
+        let currentQuestionIndex = 0;
+        let message = "";
+        let messageTimer = 0;
+        let gameStarted = false;
+        let playerName = "Người chơi ẩn danh";
+
+        // Timer variables for the question countdown
+        const QUESTION_TIME_LIMIT = 5 * 60; // 5 seconds * 60 frames/second
+        let questionTimer = QUESTION_TIME_LIMIT;
+        let timerPaused = false; // To pause timer when modal is open
+
+        // Hàm để xáo trộn mảng câu hỏi
+        function shuffleArray(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+        }
+        shuffleArray(questions); // Xáo trộn ban đầu
+
+        // Hàm để thay đổi kích thước canvas động
+        function resizeCanvas() {
+            const containerWidth = window.innerWidth * 0.9; // 90% chiều rộng cửa sổ
+            const containerHeight = window.innerHeight * 0.7; // 70% chiều cao cửa sổ
+
+            let newWidth = containerWidth;
+            let newHeight = (newWidth / originalCanvasWidth) * originalCanvasHeight;
+
+            if (newHeight > containerHeight) {
+                newHeight = containerHeight;
+                newWidth = (newHeight / originalCanvasHeight) * originalCanvasWidth;
+            }
+
+            canvas.width = newWidth;
+            canvas.height = newHeight;
+
+            // Hệ số tỷ lệ để vẽ các phần tử
+            stickman.scaleX = newWidth / originalCanvasWidth;
+            stickman.scaleY = newHeight / originalCanvasHeight; 
+
+            // Đặt lại vị trí X của stickman để căn giữa sau khi thay đổi kích thước canvas
+            stickman.x = (originalCanvasWidth / 2) - (stickman.width / 2);
+
+            // Vẽ lại mọi thứ sau khi thay đổi kích thước để đảm bảo các phần tử được chia tỷ lệ chính xác
+            if (gameStarted) {
+                draw();
+            }
+        }
+
+        function drawStickman() {
+            ctx.strokeStyle = "black";
+            ctx.lineWidth = 2 * stickman.scaleX; // Chia tỷ lệ độ rộng đường kẻ
+            ctx.beginPath();
+            // Đầu
+            ctx.arc(stickman.x * stickman.scaleX + 15 * stickman.scaleX, stickman.y * stickman.scaleY + 10 * stickman.scaleY, 10 * stickman.scaleX, 0, Math.PI * 2);
+            ctx.stroke();
+            // Thân
+            ctx.beginPath();
+            ctx.moveTo(stickman.x * stickman.scaleX + 15 * stickman.scaleX, stickman.y * stickman.scaleY + 20 * stickman.scaleY);
+            ctx.lineTo(stickman.x * stickman.scaleX + 15 * stickman.scaleX, stickman.y * stickman.scaleY + 40 * stickman.scaleY);
+            ctx.stroke();
+            // Tay
+            ctx.beginPath();
+            ctx.moveTo(stickman.x * stickman.scaleX + 15 * stickman.scaleX, stickman.y * stickman.scaleY + 25 * stickman.scaleY);
+            ctx.lineTo(stickman.x * stickman.scaleX + 5 * stickman.scaleX, stickman.y * stickman.scaleY + 35 * stickman.scaleY);
+            ctx.moveTo(stickman.x * stickman.scaleX + 15 * stickman.scaleX, stickman.y * stickman.scaleY + 25 * stickman.scaleY);
+            ctx.lineTo(stickman.x * stickman.scaleX + 25 * stickman.scaleX, stickman.y * stickman.scaleY + 35 * stickman.scaleY);
+            ctx.stroke();
+            // Chân
+            ctx.beginPath();
+            ctx.moveTo(stickman.x * stickman.scaleX + 15 * stickman.scaleX, stickman.y * stickman.scaleY + 40 * stickman.scaleY);
+            ctx.lineTo(stickman.x * stickman.scaleX + 5 * stickman.scaleX, stickman.y * stickman.scaleY + 55 * stickman.scaleY);
+            ctx.moveTo(stickman.x * stickman.scaleX + 15 * stickman.scaleX, stickman.y * stickman.scaleY + 40 * stickman.scaleY);
+            ctx.lineTo(stickman.x * stickman.scaleX + 25 * stickman.scaleX, stickman.y * stickman.scaleY + 55 * stickman.scaleY);
+            ctx.stroke();
+        }
+
+        function drawZones() {
+            answerZones.forEach(zone => {
+                const scaledX = zone.x * stickman.scaleX;
+                const scaledY = zone.y * stickman.scaleY;
+                const scaledWidth = zone.width * stickman.scaleX;
+                const scaledHeight = zone.height * stickman.scaleY;
+
+                ctx.fillStyle = "#ffd700"; // Vàng
+                ctx.fillRect(scaledX, scaledY, scaledWidth, scaledHeight);
+                ctx.strokeStyle = "#ccab00"; // Vàng sẫm hơn
+                ctx.lineWidth = 3 * stickman.scaleX; // Chia tỷ lệ độ rộng đường kẻ
+                ctx.strokeRect(scaledX, scaledY, scaledWidth, scaledHeight);
+
+                ctx.fillStyle = "black";
+                ctx.font = `bold ${18 * stickman.scaleX}px Inter`; // Chia tỷ lệ cỡ chữ
+                ctx.textAlign = "center";
+                ctx.fillText(zone.text, scaledX + scaledWidth / 2, scaledY + scaledHeight / 2 + 5 * stickman.scaleY);
+                ctx.textAlign = "left";
+            });
+        }
+
+        function drawWalls() {
+            ctx.fillStyle = "gray";
+            walls.forEach(w => {
+                ctx.fillRect(w.x * stickman.scaleX, w.y * stickman.scaleY, w.width * stickman.scaleX, w.height * stickman.scaleY);
+            });
+        }
+
+        function drawGround() {
+            ctx.fillStyle = "#4CAF50"; // Xanh lá
+            ctx.fillRect(ground.x * stickman.scaleX, ground.y * stickman.scaleY, ground.width * stickman.scaleX, ground.height * stickman.scaleY);
+            ctx.strokeStyle = "#388E3C"; // Xanh lá sẫm hơn
+            ctx.lineWidth = 3 * stickman.scaleX; // Chia tỷ lệ độ rộng đường kẻ
+            ctx.strokeRect(ground.x * stickman.scaleX, ground.y * stickman.scaleY, ground.width * stickman.scaleX, ground.height * stickman.scaleY);
+        }
+
+        function drawQuestion() {
+            ctx.fillStyle = "#333";
+            ctx.font = `bold ${24 * stickman.scaleX}px Inter`; // Chia tỷ lệ cỡ chữ
+            ctx.textAlign = "center";
+            ctx.fillText("Câu hỏi: " + questions[currentQuestionIndex].question, canvas.width / 2, 50 * stickman.scaleY);
+            ctx.textAlign = "left";
+        }
+
+        function drawMessage() {
+            if (message !== "") {
+                ctx.fillStyle = message === "Đúng rồi!" ? "#28a745" : "#dc3545";
+                ctx.font = `bold ${20 * stickman.scaleX}px Inter`; // Chia tỷ lệ cỡ chữ
+                ctx.textAlign = "center";
+                ctx.fillText(message, canvas.width / 2, 80 * stickman.scaleY);
+                ctx.textAlign = "left";
+            }
+        }
+
+        function drawTimer() {
+            if (gameStarted && !timerPaused) {
+                const secondsLeft = Math.ceil(questionTimer / 60); // Convert frames to seconds
+                ctx.fillStyle = secondsLeft <= 2 ? "#dc3545" : "#007bff"; // Red if low, blue otherwise
+                ctx.font = `bold ${30 * stickman.scaleX}px Inter`;
+                ctx.textAlign = "center";
+                ctx.fillText(`Thời gian: ${secondsLeft}`, canvas.width / 2, 120 * stickman.scaleY);
+                ctx.textAlign = "left";
+            }
+        }
+
+        function gameOver() {
+            gameStarted = false;
+            backgroundMusic.pause(); // Pause background music on game over
+            backgroundMusic.currentTime = 0; // Reset background music to start
+            finalScoreDisplay.textContent = `Điểm của bạn: ${score}`;
+            gameOverScreen.style.display = 'flex';
+        }
+
+        function resetQuestionTimer() {
+            questionTimer = QUESTION_TIME_LIMIT;
+            timerPaused = false;
+        }
+
+        function resetGame() {
+            score = 0;
+            lives = 3;
+            currentQuestionIndex = 0;
+            message = "";
+            // Đặt lại vị trí X của stickman để căn giữa
+            stickman.x = (originalCanvasWidth / 2) - (stickman.width / 2);
+            stickman.y = 300;
+            stickman.dx = 0;
+            stickman.dy = 0;
+            stickman.onGround = true;
+            scoreDisplay.textContent = "Điểm: " + score;
+            livesDisplay.textContent = '❤️'.repeat(lives);
+            shuffleArray(questions);
+            gameOverScreen.style.display = 'none';
+            startScreen.style.display = 'flex';
+            resetQuestionTimer(); // Reset timer when game resets
+        }
+
+        function applyScreenEffect() {
+            document.body.classList.add('shake-screen', 'flash-red');
+            setTimeout(() => {
+                document.body.classList.remove('shake-screen', 'flash-red');
+            }, 300); // Duration matches CSS animation duration
+        }
+
+        function update() {
+            if (!gameStarted) return;
+
+            // Update timer if not paused
+            if (!timerPaused) {
+                questionTimer--;
+                if (questionTimer <= 0) {
+                    message = "Hết giờ! Mất 3 mạng!";
+                    lives -= 3;
+                    livesDisplay.textContent = '❤️'.repeat(Math.max(0, lives)); // Ensure it doesn't show negative hearts
+                    oofSound.currentTime = 0; // Play oof sound
+                    oofSound.play().catch(e => console.error("Lỗi khi phát âm thanh oof:", e));
+                    applyScreenEffect(); // Apply screen shake and flash
+
+                    if (lives <= 0) {
+                        gameOver();
+                        return; // Stop update loop if game is over
+                    }
+
+                    currentQuestionIndex = (currentQuestionIndex + 1) % questions.length;
+                    if (currentQuestionIndex === 0) {
+                        shuffleArray(questions);
+                    }
+                    stickman.x = (originalCanvasWidth / 2) - (stickman.width / 2); // Reset stickman position
+                    stickman.y = 300;
+                    messageTimer = 60; // Display message for a short duration
+                    score = Math.max(0, score); // Ensure score doesn't go negative from lives loss
+                    scoreDisplay.textContent = "Điểm: " + score;
+                    resetQuestionTimer(); // Reset timer for the new question
+                }
+            }
+
+            // Áp dụng trọng lực
+            stickman.dy += stickman.gravity;
+            stickman.y += stickman.dy;
+            stickman.x += stickman.dx;
+
+            // Đảm bảo stickman không ra khỏi biên ngang của canvas gốc
+            stickman.x = Math.max(0, Math.min(stickman.x, originalCanvasWidth - stickman.width));
+
+            // Va chạm với mặt đất
+            if (stickman.y + stickman.height >= ground.y) {
+                stickman.y = ground.y - stickman.height;
+                stickman.dy = 0;
+                stickman.onGround = true;
+            }
+
+            // Va chạm với tường
+            walls.forEach(w => {
+                if (stickman.x < w.x + w.width &&
+                    stickman.x + stickman.width > w.x &&
+                    stickman.y < w.y + w.height &&
+                    stickman.y + stickman.height > w.y) {
+                    if (stickman.x + stickman.width / 2 < w.x + w.width / 2) {
+                        stickman.x = w.x - stickman.width;
+                    } else {
+                        stickman.x = w.x + w.width;
+                    }
+                }
+            });
+
+            // Va chạm với vùng trả lời (sử dụng tọa độ chưa chia tỷ lệ)
+            answerZones.forEach((zone, index) => {
+                if (stickman.x < zone.x + zone.width &&
+                    stickman.x + stickman.width > zone.x &&
+                    stickman.y < zone.y + zone.height &&
+                    stickman.y + stickman.height > zone.y) {
+
+                    if (questions[currentQuestionIndex].correct === index) {
+                        message = "Đúng rồi!";
+                        score += 10;
+                        currentQuestionIndex = (currentQuestionIndex + 1) % questions.length;
+                        if (currentQuestionIndex === 0) {
+                            shuffleArray(questions); // Xáo trộn lại câu hỏi sau một chu kỳ đầy đủ
+                        }
+                        correctSound.currentTime = 0; // Play correct sound
+                        correctSound.play().catch(e => console.error("Lỗi khi phát âm thanh đúng:", e));
+                    } else {
+                        message = "Sai rồi!";
+                        lives--;
+                        livesDisplay.textContent = '❤️'.repeat(Math.max(0, lives));
+                        score = Math.max(0, score - 5); // Ngăn điểm số xuống âm
+                        oofSound.currentTime = 0; // Play oof sound
+                        oofSound.play().catch(e => console.error("Lỗi khi phát âm thanh oof:", e));
+                        applyScreenEffect(); // Apply screen shake and flash
+
+                        if (lives <= 0) {
+                            gameOver();
+                            return; // Dừng vòng lặp cập nhật nếu trò chơi kết thúc
+                        }
+                    }
+                    // Đặt lại vị trí X của stickman để căn giữa sau khi trả lời
+                    stickman.x = (originalCanvasWidth / 2) - (stickman.width / 2);
+                    stickman.y = 300;
+                    messageTimer = 60; // Hiển thị tin nhắn trong một thời gian ngắn
+                    scoreDisplay.textContent = "Điểm: " + score;
+                    resetQuestionTimer(); // Reset timer for the new question
+                }
+            });
+
+            // Giảm thời gian hiển thị tin nhắn
+            if (messageTimer > 0) {
+                messageTimer--;
+            } else {
+                message = ""; // Xóa tin nhắn khi hết giờ
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height); // Xóa canvas
+            drawGround();
+            drawWalls();
+            drawStickman();
+            drawZones();
+            drawQuestion();
+            drawMessage();
+            drawTimer(); // Draw the timer
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+            if (gameStarted) {
+                requestAnimationFrame(gameLoop); // Tiếp tục vòng lặp trò chơi
+            }
+        }
+
+        // Utility for exponential backoff
+        async function fetchWithExponentialBackoff(url, options, retries = 3, delay = 1000) {
+            for (let i = 0; i < retries; i++) {
+                try {
+                    const response = await fetch(url, options);
+                    if (!response.ok) {
+                        if (response.status === 429 && i < retries - 1) { // Too Many Requests
+                            await new Promise(res => setTimeout(res, delay));
+                            delay *= 2; // Exponential backoff
+                            continue;
+                        }
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response;
+                } catch (error) {
+                    if (i < retries - 1) {
+                        await new Promise(res => setTimeout(res, delay));
+                        delay *= 2;
+                    } else {
+                        throw error;
+                    }
+                }
+            }
+        }
+
+        // Function to call Gemini API for word explanation
+        async function explainWord() {
+            timerPaused = true; // Pause timer when modal is open
+            const wordToExplain = questions[currentQuestionIndex].question.replace(' là?', ''); // Get the word without " là?"
+            explanationText.textContent = "Đang tải giải thích...";
+            explanationModal.classList.remove('hidden');
+            explainWordButton.disabled = true;
+            explainWordButton.textContent = "Đang tải... ✨";
+
+            let chatHistory = [];
+            // Prompt for LLM to get structured explanation
+            const prompt = `Phân loại từ '${wordToExplain}' là từ ghép hay từ láy và giải thích ngắn gọn ý nghĩa của nó trong tiếng Việt. Trả lời theo định dạng JSON: { "type": "Từ ghép" hoặc "Từ láy", "explanation": "Giải thích chi tiết" }`;
+            chatHistory.push({ role: "user", parts: [{ text: prompt }] });
+
+            const payload = {
+                contents: chatHistory,
+                generationConfig: {
+                    responseMimeType: "application/json",
+                    responseSchema: {
+                        type: "OBJECT",
+                        properties: {
+                            "type": { "type": "STRING", "enum": ["Từ ghép", "Từ láy"] },
+                            "explanation": { "type": "STRING" }
+                        },
+                        "propertyOrdering": ["type", "explanation"]
+                    }
+                }
+            };
+
+            const apiKey = ""; // Canvas will automatically provide this
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+
+            try {
+                const response = await fetchWithExponentialBackoff(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const result = await response.json();
+
+                if (result.candidates && result.candidates.length > 0 &&
+                    result.candidates[0].content && result.candidates[0].content.parts &&
+                    result.candidates[0].content.parts.length > 0) {
+                    const jsonString = result.candidates[0].content.parts[0].text;
+                    const parsedJson = JSON.parse(jsonString);
+                    explanationText.innerHTML = `**Phân loại:** ${parsedJson.type}<br><br>**Giải thích:** ${parsedJson.explanation}`;
+                } else {
+                    explanationText.textContent = "Không thể lấy giải thích cho từ này. Vui lòng thử lại.";
+                    console.error("Unexpected API response structure:", result);
+                }
+            } catch (error) {
+                explanationText.textContent = "Đã xảy ra lỗi khi lấy giải thích. Vui lòng kiểm tra kết nối mạng và thử lại.";
+                console.error("Error fetching explanation:", error);
+            } finally {
+                explainWordButton.disabled = false;
+                explainWordButton.textContent = "Giải thích từ ✨";
+            }
+        }
+
+        // Function to call Gemini API to generate new questions
+        async function generateNewQuestions() {
+            timerPaused = true; // Pause timer when modal is open
+            generateQuestionsButton.disabled = true;
+            generateQuestionsButton.textContent = "Đang tạo... ✨";
+            message = "Đang tạo câu hỏi mới...";
+            messageTimer = 120; // Display message for a longer duration
+
+            let chatHistory = [];
+            const prompt = `Tạo một danh sách 10 từ tiếng Việt, mỗi từ được phân loại rõ ràng là 'Từ ghép' hoặc 'Từ láy'. Trả lời theo định dạng JSON array, trong đó mỗi đối tượng có thuộc tính 'question' (là từ và ' là?') và 'correct' (0 cho Từ ghép, 1 cho Từ láy). Ví dụ: [{"question": "Xe đạp là?", "correct": 0}, {"question": "Lấp lánh là?", "correct": 1}]`;
+            chatHistory.push({ role: "user", parts: [{ text: prompt }] });
+
+            const payload = {
+                contents: chatHistory,
+                generationConfig: {
+                    responseMimeType: "application/json",
+                    responseSchema: {
+                        type: "ARRAY",
+                        items: {
+                            type: "OBJECT",
+                            properties: {
+                                "question": { "type": "STRING" },
+                                "correct": { "type": "INTEGER" }
+                            },
+                            "propertyOrdering": ["question", "correct"]
+                        }
+                    }
+                }
+            };
+
+            const apiKey = ""; // Canvas will automatically provide this
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+
+            try {
+                const response = await fetchWithExponentialBackoff(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const result = await response.json();
+
+                if (result.candidates && result.candidates.length > 0 &&
+                    result.candidates[0].content && result.candidates[0].content.parts &&
+                    result.candidates[0].content.parts.length > 0) {
+                    const jsonString = result.candidates[0].content.parts[0].text;
+                    const newQuestions = JSON.parse(jsonString);
+                    if (Array.isArray(newQuestions) && newQuestions.length > 0) {
+                        questions = newQuestions; // Update the game's questions array
+                        shuffleArray(questions); // Shuffle the new questions
+                        resetGame(); // Reset game state to start with new questions
+                        message = "Đã tạo câu hỏi mới thành công!";
+                        messageTimer = 60;
+                    } else {
+                        message = "Không thể tạo câu hỏi mới. Vui lòng thử lại.";
+                        console.error("Generated questions array is empty or not an array:", newQuestions);
+                    }
+                } else {
+                    message = "Không thể tạo câu hỏi mới. Vui lòng thử lại.";
+                    console.error("Unexpected API response structure for new questions:", result);
+                }
+            } catch (error) {
+                message = "Đã xảy ra lỗi khi tạo câu hỏi. Vui lòng kiểm tra kết nối mạng và thử lại.";
+                console.error("Error generating new questions:", error);
+            } finally {
+                generateQuestionsButton.disabled = false;
+                generateQuestionsButton.textContent = "Tạo câu hỏi mới ✨";
+                timerPaused = false; // Resume timer after generation
+            }
+        }
+
+
+        // Trình lắng nghe sự kiện
+        window.onload = function() {
+            resizeCanvas(); // Thay đổi kích thước canvas ban đầu khi tải
+            startButton.addEventListener('click', () => {
+                playerName = playerNameInput.value.trim();
+                if (playerName === "") {
+                    playerName = "Người chơi ẩn danh";
+                }
+                startScreen.style.display = 'none'; // Ẩn màn hình bắt đầu
+                gameStarted = true; // Bắt đầu trò chơi
+                gameLoop(); // Bắt đầu vòng lặp trò chơi
+                backgroundMusic.play().catch(e => console.error("Lỗi khi phát nhạc nền:", e)); // Play background music on start
+                resetQuestionTimer(); // Start timer for the first question
+            });
+
+            restartButton.addEventListener('click', () => {
+                resetGame(); // Đặt lại trạng thái trò chơi
+            });
+
+            // Event listener for the new scroll down button
+            scrollDownButton.addEventListener('click', () => {
+                window.scrollBy({
+                    top: window.innerHeight, // Scroll down by one viewport height
+                    behavior: 'smooth' // Smooth scrolling animation
+                });
+            });
+
+            // Event listeners for the explanation feature
+            explainWordButton.addEventListener('click', explainWord);
+            closeExplanationModalButton.addEventListener('click', () => {
+                explanationModal.classList.add('hidden'); // Hide the modal
+                timerPaused = false; // Resume timer when modal is closed
+            });
+
+            // Event listener for the new generate questions feature
+            generateQuestionsButton.addEventListener('click', generateNewQuestions);
+        };
+
+        // Lắng nghe sự kiện thay đổi kích thước cửa sổ để điều chỉnh canvas
+        window.addEventListener('resize', resizeCanvas);
+
+        document.addEventListener("keydown", e => {
+            if (!gameStarted) return; // Chỉ cho phép điều khiển nếu trò chơi đã bắt đầu
+            if (e.key === "ArrowRight") stickman.dx = 5;
+            if (e.key === "ArrowLeft") stickman.dx = -5;
+            if (e.key === " " && stickman.onGround) { // Phím cách để nhảy
+                stickman.dy = stickman.jumpPower;
+                stickman.onGround = false;
+            }
+        });
+
+        document.addEventListener("keyup", e => {
+            if (!gameStarted) return; // Chỉ cho phép điều khiển nếu trò chơi đã bắt đầu
+            if (e.key === "ArrowRight" || e.key === "ArrowLeft") stickman.dx = 0; // Dừng di chuyển ngang
+        });
+    </script>
+</body>
+</html>
